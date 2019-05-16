@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="en-US">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <title>VuePress</title>
+    <meta name="description" content="">
+    
+    
+    <link rel="preload" href="/assets/css/0.styles.87386866.css" as="style"><link rel="preload" href="/assets/js/app.9057a45e.js" as="script"><link rel="preload" href="/assets/js/2.8149e9c9.js" as="script"><link rel="preload" href="/assets/js/9.c5b2df4d.js" as="script"><link rel="prefetch" href="/assets/js/10.16c00290.js"><link rel="prefetch" href="/assets/js/11.5d2a6e9f.js"><link rel="prefetch" href="/assets/js/3.e26b2b52.js"><link rel="prefetch" href="/assets/js/4.8b9778bd.js"><link rel="prefetch" href="/assets/js/5.f6ed543a.js"><link rel="prefetch" href="/assets/js/6.decf63af.js"><link rel="prefetch" href="/assets/js/7.7ed49bf8.js"><link rel="prefetch" href="/assets/js/8.ac833798.js">
+    <link rel="stylesheet" href="/assets/css/0.styles.87386866.css">
+  </head>
+  <body>
+    <div id="app" data-server-rendered="true"><div class="theme-container no-sidebar"><header class="navbar"><div class="sidebar-button"><svg xmlns="http://www.w3.org/2000/svg" aria-hidden="true" role="img" viewBox="0 0 448 512" class="icon"><path fill="currentColor" d="M436 124H12c-6.627 0-12-5.373-12-12V80c0-6.627 5.373-12 12-12h424c6.627 0 12 5.373 12 12v32c0 6.627-5.373 12-12 12zm0 160H12c-6.627 0-12-5.373-12-12v-32c0-6.627 5.373-12 12-12h424c6.627 0 12 5.373 12 12v32c0 6.627-5.373 12-12 12zm0 160H12c-6.627 0-12-5.373-12-12v-32c0-6.627 5.373-12 12-12h424c6.627 0 12 5.373 12 12v32c0 6.627-5.373 12-12 12z"></path></svg></div> <a href="/" class="home-link router-link-active"></a> <div class="links"><div class="search-box"><input aria-label="Search" autocomplete="off" spellcheck="false" value=""> <!----></div> <!----></div></header> <div class="sidebar-mask"></div> <aside class="sidebar"><!---->  <!----> </aside> <main class="page"> <div class="content default"><h1 id="记录一次-macos-nginx无法访问的情况"><a href="#记录一次-macos-nginx无法访问的情况" aria-hidden="true" class="header-anchor">#</a> 记录一次 MacOS nginx无法访问的情况</h1> <p>PS. 以后要多写一些自己的内容</p> <p>在本地开发环境中，如果需要用nginx反向代理自己的一些服务，通常用于处理跨域问题。今天发现在请求nginx大体积文件时在浏览器中显示请求<code>failed</code>, 在控制台会发生<code>net::ERR_SPDY_PROTOCOL_ERROR 200</code>的报错。</p> <p>怀疑nginx或者原服务有问题，直接在命令行curl原有服务，发现没有问题，但在curl nginx服务中发现，请求断了。google了一会儿没有找到原因，无奈开启了nginx error日志，发现以下内容：</p> <div class="language- extra-class"><pre class="language-text"><code>2019/05/05 11:55:55 [crit] 25909#0: *1 open() &quot;/usr/local/var/run/nginx/proxy_temp/1/00/0000000001&quot; failed (13: Permission denied) while reading upstream, client: 127.0.0.1, server: some_server, request: &quot;GET /app.js HTTP/1.1&quot;, upstream: &quot;http://127.0.0.1:9011/app.js&quot;, host: &quot;some_host&quot;
+2019/05/05 12:04:19 [error] 26087#0: *1 kevent() reported that connect() failed (61: Connection refused) while connecting to upstream, client: 127.0.0.1, server: some_server, request: &quot;GET /app.js HTTP/1.1&quot;, upstream: &quot;http://[::1]:9011/app.js&quot;, host: &quot;some_host&quot;
+</code></pre></div><p>仔细调查了<code>/usr/local/var/run/nginx</code>的目录:</p> <div class="language- extra-class"><pre class="language-text"><code>$ ls -l /usr/local/var/run/nginx
+total 0
+drwx------   2 nobody  admin   64 Jun  4  2017 client_body_temp
+drwx------   2 nobody  admin   64 Jun  4  2017 fastcgi_temp
+drwx------  12 nobody  admin  384 Jun 11  2017 proxy_temp
+drwx------   2 nobody  admin   64 Jun  4  2017 scgi_temp
+drwx------   2 nobody  admin   64 Jun  4  2017 uwsgi_temp
+</code></pre></div><p>再看到自己的nginx进程:</p> <div class="language- extra-class"><pre class="language-text"><code>$ ps aux | grep nginx
+SomeUser           25941   0.0  0.0  4320356   2572   ??  Ss   11:56AM   0:00.01 nginx: master process nginx
+SomeUser           26264   0.0  0.0  4337260   3568   ??  S    12:05PM   0:00.08 nginx: worker process
+</code></pre></div><p>这里解释一下，<code>/usr/local/var/run</code>运行时的临时目录里有用户组混乱的场景，主要是因为<code>nginx</code>启动时使用的是mac用户，如果使用高权限启动就没有这个问题了。</p> <p>所以解决方案有2个：</p> <h2 id="方案1"><a href="#方案1" aria-hidden="true" class="header-anchor">#</a> 方案1</h2> <p>仍然使用mac用户启动nginx，但需要修改运行时临时目录权限：</p> <div class="language- extra-class"><pre class="language-text"><code>chown -R SomeUser: /usr/local/var/run/nginx/*
+</code></pre></div><h2 id="方案2"><a href="#方案2" aria-hidden="true" class="header-anchor">#</a> 方案2</h2> <p>使用超级用户启动nginx，但需要修复运行时临时目录权限：</p> <div class="language- extra-class"><pre class="language-text"><code>chown -R nobody:admin /usr/local/var/run/nginx/*
+# 超级用户启动，那worker就是nobody了
+sudo nginx
+</code></pre></div></div> <footer class="page-edit"><!----> <!----></footer> <!----> </main></div><div class="global-ui"></div></div>
+    <script src="/assets/js/app.9057a45e.js" defer></script><script src="/assets/js/2.8149e9c9.js" defer></script><script src="/assets/js/9.c5b2df4d.js" defer></script>
+  </body>
+</html>
